@@ -31,50 +31,52 @@ class DepartureBoardScreen extends StatefulWidget {
 }
 
 class _DepartureBoardScreenState extends State<DepartureBoardScreen> {
-  final List<DepartureData> _rows = [
-    DepartureData('AB 1234', '09:15', 'NEW YORK', 'A01', 'BOARDING'),
-    DepartureData('CD 5678', '09:30', 'PRAGUE', 'B04', 'ON TIME'),
-    DepartureData('DE 0012', '09:55', 'LONDON', 'D20', 'ON TIME'),
-    DepartureData('AB 0104', '10:05', 'DOHA', 'A03', 'DELAYED'),
-    DepartureData('FP 0183', '10:15', 'CHICAGO', 'A06', 'ON TIME'),
-    DepartureData('CA 1090', '10:20', 'MOSCOW', 'G01', 'ON TIME'),
-    DepartureData('GX 1113', '10:30', 'PARIS', 'A04', 'ON TIME'),
-    DepartureData('SE 0219', '10:55', 'BANGKOK', 'B04', 'ON TIME'),
-    DepartureData('BA 7037', '11:00', 'LAS VEGAS', 'A10', 'ON TIME'),
-    DepartureData('AB 0335', '11:05', 'BERLIN', 'E01', 'ON TIME'),
-  ];
-
-  final Color _yellow = const Color(0xFFFFD100); 
-  bool _shuffling = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _initBoard();
-  }
-
-  void _initBoard() async {
-    await FlapSoundManager.instance.init();
-    await Future.delayed(const Duration(milliseconds: 600));
-    if (mounted) _shuffle();
-  }
-
-  void _shuffle() async {
-    if (_shuffling) return;
-    setState(() => _shuffling = true);
-
-    final tempRows = List<DepartureData>.from(_rows);
-    tempRows.shuffle();
-    for (int i = 0; i < _rows.length; i++) {
-       // Slightly more delay on mobile to give UI thread more breath
-       await Future.delayed(const Duration(milliseconds: 200));
-       if (!mounted) break;
-       setState(() {
-         _rows[i] = tempRows[i];
-       });
-    }
-    setState(() => _shuffling = false);
-  }
+   // Use ValueNotifiers to update each row independently without full-screen rebuilds
+   final List<ValueNotifier<DepartureData>> _rowNotifiers = [
+     ValueNotifier(DepartureData('AB 1234', '09:15', 'NEW YORK', 'A01', 'BOARDING')),
+     ValueNotifier(DepartureData('CD 5678', '09:30', 'PRAGUE', 'B04', 'ON TIME')),
+     ValueNotifier(DepartureData('DE 0012', '09:55', 'LONDON', 'D20', 'ON TIME')),
+     ValueNotifier(DepartureData('AB 0104', '10:05', 'DOHA', 'A03', 'DELAYED')),
+     ValueNotifier(DepartureData('FP 0183', '10:15', 'CHICAGO', 'A06', 'ON TIME')),
+     ValueNotifier(DepartureData('CA 1090', '10:20', 'MOSCOW', 'G01', 'ON TIME')),
+     ValueNotifier(DepartureData('GX 1113', '10:30', 'PARIS', 'A04', 'ON TIME')),
+     ValueNotifier(DepartureData('SE 0219', '10:55', 'BANGKOK', 'B04', 'ON TIME')),
+     ValueNotifier(DepartureData('BA 7037', '11:00', 'LAS VEGAS', 'A10', 'ON TIME')),
+     ValueNotifier(DepartureData('AB 0335', '11:05', 'BERLIN', 'E01', 'ON TIME')),
+   ];
+ 
+   final Color _yellow = const Color(0xFFFFD100); 
+   bool _shuffling = false;
+ 
+   @override
+   void initState() {
+     super.initState();
+     _initBoard();
+   }
+ 
+   void _initBoard() async {
+     await FlapSoundManager.instance.init();
+     await Future.delayed(const Duration(milliseconds: 600));
+     if (mounted) _shuffle();
+   }
+ 
+   void _shuffle() async {
+     if (_shuffling) return;
+     setState(() => _shuffling = true);
+ 
+     // Target data for the shuffle
+     final tempRows = _rowNotifiers.map((n) => n.value).toList()..shuffle();
+     
+     for (int i = 0; i < _rowNotifiers.length; i++) {
+        // Reduced delay since it's zero parent rebuild overhead now
+        await Future.delayed(const Duration(milliseconds: 150));
+        if (!mounted) break;
+        // Notifying only this row: NO parent build budget is spent
+        _rowNotifiers[i].value = tempRows[i]; 
+     }
+     
+     setState(() => _shuffling = false);
+   }
 
   void _onShufflePressed() {
      FlapSoundManager.instance.playClick();
@@ -145,21 +147,21 @@ class _DepartureBoardScreenState extends State<DepartureBoardScreen> {
     return Container(
       padding: EdgeInsets.all(isDesktop ? 44 : (isTablet ? 28 : 20)),
       decoration: BoxDecoration(
-        color: const Color(0xFF0C0C0C),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: Colors.white.withOpacity(0.08), width: 1.2),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.95), 
-            blurRadius: isMobile ? 30 : 60, 
-            spreadRadius: isMobile ? 5 : 10
-          ),
-          if (!isMobile) BoxShadow(
-            color: _yellow.withOpacity(0.015), 
-            blurRadius: 120, 
-            spreadRadius: 2
-          ),
-        ],
+         color: const Color(0xFF0C0C0C),
+         borderRadius: BorderRadius.circular(28),
+         border: Border.all(color: Colors.white.withValues(alpha: 0.08), width: 1.2),
+         boxShadow: [
+           BoxShadow(
+             color: Colors.black.withValues(alpha: 0.95), 
+             blurRadius: isMobile ? 30 : 60, 
+             spreadRadius: isMobile ? 5 : 10
+           ),
+           if (!isMobile) BoxShadow(
+             color: _yellow.withValues(alpha: 0.015), 
+             blurRadius: 120, 
+             spreadRadius: 2
+           ),
+         ],
       ),
       child: FittedBox(
         fit: BoxFit.scaleDown,
@@ -167,15 +169,15 @@ class _DepartureBoardScreenState extends State<DepartureBoardScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _BoardHeader(isMobile: isMobile, width: totalW, wT: wT, h: h, w: w, sp: sp, yellow: _yellow),
-            const SizedBox(height: 40),
-            _buildColumnTitles(isDesktop, isTablet, isMobile, wF, wT, wD, wG, wS, gap),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              child: Divider(color: Colors.white.withOpacity(0.04), height: 1, thickness: 1),
-            ),
-            _BoardGrid(
-              rows: _rows,
+             _BoardHeader(isMobile: isMobile, width: totalW, wT: wT, h: h, w: w, sp: sp, yellow: _yellow),
+             const SizedBox(height: 40),
+             _buildColumnTitles(isDesktop, isTablet, isMobile, wF, wT, wD, wG, wS, gap),
+             Padding(
+               padding: const EdgeInsets.symmetric(vertical: 14),
+               child: Divider(color: Colors.white.withValues(alpha: 0.04), height: 1, thickness: 1),
+             ),
+             _BoardGrid(
+               rows: _rowNotifiers,
               isDesktop: isDesktop, isTablet: isTablet, isMobile: isMobile,
               wF: wF, wT: wT, wD: wD, wG: wG, wS: wS,
               gap: gap, h: h, w: w, sp: sp,
@@ -190,16 +192,16 @@ class _DepartureBoardScreenState extends State<DepartureBoardScreen> {
 
   Widget _buildColumnTitles(bool isD, bool isT, bool isM, double wF, double wT, double wD, double wG, double wS, double gap) {
     Widget title(String txt, double w) => SizedBox(
-      width: w, 
-      child: Text(txt, 
-        style: TextStyle(
-          color: Colors.white.withOpacity(0.12), 
-          fontSize: 10, 
-          fontWeight: FontWeight.w800, 
-          letterSpacing: 2.0
-        )
-      )
-    );
+       width: w, 
+       child: Text(txt, 
+         style: TextStyle(
+           color: Colors.white.withValues(alpha: 0.12), 
+           fontSize: 10, 
+           fontWeight: FontWeight.w800, 
+           letterSpacing: 2.0
+         )
+       )
+     );
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -215,20 +217,20 @@ class _DepartureBoardScreenState extends State<DepartureBoardScreen> {
   }
 
   Widget _buildButton() {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [BoxShadow(color: _yellow.withOpacity(0.15), blurRadius: 40, spreadRadius: -10)]
-      ),
+     return Container(
+       decoration: BoxDecoration(
+         borderRadius: BorderRadius.circular(18),
+         boxShadow: [BoxShadow(color: _yellow.withValues(alpha: 0.15), blurRadius: 40, spreadRadius: -10)]
+       ),
       child: ElevatedButton.icon(
         onPressed: _shuffling ? null : _onShufflePressed,
         icon: Icon(_shuffling ? Icons.more_horiz : Icons.sync, color: Colors.black, size: 22),
-        label: Text(_shuffling ? "UPDATING BOARD..." : "RELOAD FLIGHTS", 
-          style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.8)),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: _yellow, 
-          disabledBackgroundColor: _yellow.withOpacity(0.5),
-          padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 24),
+         label: Text(_shuffling ? "UPDATING BOARD..." : "RELOAD FLIGHTS", 
+           style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.8)),
+         style: ElevatedButton.styleFrom(
+           backgroundColor: _yellow, 
+           disabledBackgroundColor: _yellow.withValues(alpha: 0.5),
+           padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 24),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           elevation: 0,
         ),
@@ -347,9 +349,9 @@ class _ClockWidgetState extends State<_ClockWidget> {
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Text("LOCAL TIME", style: TextStyle(color: widget.yellow.withOpacity(0.3), fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
-        const SizedBox(height: 6),
+       children: [
+         Text("LOCAL TIME", style: TextStyle(color: widget.yellow.withValues(alpha: 0.3), fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+         const SizedBox(height: 6),
         SizedBox(
           width: widget.wT,
           child: SplitFlapRow(
@@ -366,11 +368,11 @@ class _ClockWidgetState extends State<_ClockWidget> {
       ],
     );
   }
-}
-
-class _BoardGrid extends StatelessWidget {
-  final List<DepartureData> rows;
-  final bool isDesktop;
+ }
+ 
+ class _BoardGrid extends StatelessWidget {
+   final List<ValueNotifier<DepartureData>> rows;
+   final bool isDesktop;
   final bool isTablet;
   final bool isMobile;
   final double wF, wT, wD, wG, wS, gap, h, w, sp;
@@ -388,29 +390,34 @@ class _BoardGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: List.generate(rows.length, (index) {
-        return RepaintBoundary(
-          key: ValueKey('board_row_repaint_$index'),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 5.5),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (isDesktop) ...[_flap(lenF, rows[index].flight, wF, Colors.white), SizedBox(width: gap)],
-                _flap(lenT, rows[index].time, wT, yellow),
-                SizedBox(width: gap),
-                _flap(lenD, rows[index].destination, wD, Colors.white),
-                if (isDesktop) ...[SizedBox(width: gap), _flap(lenG, rows[index].gate, wG, yellow)],
-                if (!isMobile) ...[SizedBox(width: gap), _flap(lenS, rows[index].status, wS, Colors.white)],
-              ],
-            ),
-          ),
-        );
-      }),
-    );
+     return Column(
+       mainAxisSize: MainAxisSize.min,
+       crossAxisAlignment: CrossAxisAlignment.start,
+       children: List.generate(rows.length, (index) {
+         return ValueListenableBuilder<DepartureData>(
+           valueListenable: rows[index],
+           builder: (context, data, _) {
+             return RepaintBoundary(
+               key: ValueKey('board_row_repaint_$index'),
+               child: Padding(
+                 padding: const EdgeInsets.symmetric(vertical: 5.5),
+                 child: Row(
+                   mainAxisSize: MainAxisSize.min,
+                   children: [
+                     if (isDesktop) ...[_flap(lenF, data.flight, wF, Colors.white), SizedBox(width: gap)],
+                     _flap(lenT, data.time, wT, yellow),
+                     SizedBox(width: gap),
+                     _flap(lenD, data.destination, wD, Colors.white),
+                     if (isDesktop) ...[SizedBox(width: gap), _flap(lenG, data.gate, wG, yellow)],
+                     if (!isMobile) ...[SizedBox(width: gap), _flap(lenS, data.status, wS, Colors.white)],
+                   ],
+                 ),
+               ),
+             );
+           },
+         );
+       }),
+     );
   }
 
   Widget _flap(int max, String val, double containerW, Color col) {

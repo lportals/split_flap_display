@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:flutter/foundation.dart';
 
 /// Procedural, density-aware sound engine for the Split-Flap display.
 ///
@@ -58,9 +58,7 @@ class FlapSoundManager {
   final Map<int, int> _rowActivity = {};
   int _activeUnits = 0;
 
-  DateTime _lastClickTime = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime _lastAmbientUpdateTime = DateTime.fromMillisecondsSinceEpoch(0);
-  DateTime _lastHapticTime = DateTime.fromMillisecondsSinceEpoch(0);
 
   // ---------------------------------------------------------------------------
   // Players
@@ -82,6 +80,14 @@ class FlapSoundManager {
   /// Safe to call multiple times (idempotent).
   Future<void> init() async {
     if (_isInitialized) return;
+
+    // Detect mobile platform (Android/iOS)
+    // ignore: unused_local_variable
+    final isMobile = defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS;
+    
+    // Audio is now optimized for mobile via the Accumulator Pattern 
+    // and rebuild isolation in the UI.
+
     try {
       for (int i = 0; i < _poolSize; i++) {
         final player = AudioPlayer();

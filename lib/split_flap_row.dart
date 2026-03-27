@@ -76,7 +76,7 @@ class _SplitFlapRowState extends State<SplitFlapRow> with SingleTickerProviderSt
   }
 
   Future<void> _startWarmup() async {
-    final String colorKey = widget.textColor.value.toString();
+    final String colorKey = widget.textColor.toARGB32().toString();
     final String key = "${widget.unitWidth.toInt()}-${widget.unitHeight.toInt()}-$colorKey";
     
     if (_spriteSheets.containsKey(key)) {
@@ -298,7 +298,7 @@ class _SplitFlapRowState extends State<SplitFlapRow> with SingleTickerProviderSt
       width: (widget.unitWidth * widget.maxLength) + (widget.spacing * (widget.maxLength - 1))
     );
 
-    final String colorKey = widget.textColor.value.toString();
+    final String colorKey = widget.textColor.toARGB32().toString();
     final String key = "${widget.unitWidth.toInt()}-${widget.unitHeight.toInt()}-$colorKey";
     final sheet = _spriteSheets[key];
     if (sheet == null) return const SizedBox();
@@ -338,10 +338,10 @@ class SplitFlapRowPainter extends CustomPainter {
   // REUSABLE PAINT OBJECTS to avoid GC pressure on main thread
   static final Paint _mainPaint = Paint()..isAntiAlias = false;
   static final Paint _hingePaint = Paint()
-    ..color = Colors.black.withOpacity(0.6)
+    ..color = Colors.black.withValues(alpha: 0.6)
     ..strokeWidth = 1.0;
   static final Paint _pinPaint = Paint()
-    ..color = Colors.white.withOpacity(0.15)
+    ..color = Colors.white.withValues(alpha: 0.15)
     ..style = PaintingStyle.fill;
 
   SplitFlapRowPainter({
