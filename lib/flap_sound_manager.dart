@@ -105,17 +105,18 @@ class FlapSoundManager {
   void updateRowActivity(int rowId, int activeChars) {
     if (!_isInitialized) return;
 
+    final int oldVal = _rowActivity[rowId] ?? 0;
     if (activeChars > 0) {
       _rowActivity[rowId] = activeChars;
     } else {
       _rowActivity.remove(rowId);
     }
 
-    final int total = _rowActivity.values.fold(0, (sum, v) => sum + v);
-    if (total != _activeUnits) {
-      _activeUnits = total;
-      _updateAmbientMix();
-    }
+    _activeUnits += (activeChars - oldVal);
+    // Hard clamp to zero just in case of weird drift
+    if (_activeUnits < 0) _activeUnits = 0;
+
+    _updateAmbientMix();
   }
 
   /// Fires a single mechanical click from the polyphonic pool.

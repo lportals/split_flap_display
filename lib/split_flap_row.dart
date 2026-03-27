@@ -205,7 +205,10 @@ class _SplitFlapRowState extends State<SplitFlapRow> with SingleTickerProviderSt
     
     // Notify activity to sound manager (only if this row is not silent)
     if (!widget.silent) {
-      int active = _remainingSteps.where((s) => s > 0).length;
+      int active = 0;
+      for (var s in _remainingSteps) {
+        if (s > 0) active++;
+      }
       FlapSoundManager.instance.updateRowActivity(hashCode, active);
     }
   }
@@ -242,7 +245,10 @@ class _SplitFlapRowState extends State<SplitFlapRow> with SingleTickerProviderSt
     
     // Update local activity to the sound manager
     if (!widget.silent) {
-      int active = _remainingSteps.where((s) => s > 0).length;
+      int active = 0;
+      for (var s in _remainingSteps) {
+        if (s > 0) active++;
+      }
       FlapSoundManager.instance.updateRowActivity(hashCode, active);
     }
     // We only need to call setState if the animation stops.
@@ -297,10 +303,9 @@ class _SplitFlapRowState extends State<SplitFlapRow> with SingleTickerProviderSt
     final sheet = _spriteSheets[key];
     if (sheet == null) return const SizedBox();
 
-    return RepaintBoundary(
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, child) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
           return CustomPaint(
             size: Size(
               (widget.unitWidth * widget.maxLength) + (widget.spacing * (widget.maxLength - 1)),
@@ -317,8 +322,7 @@ class _SplitFlapRowState extends State<SplitFlapRow> with SingleTickerProviderSt
             ),
           );
         },
-      ),
-    );
+      );
   }
 }
 
@@ -330,6 +334,15 @@ class SplitFlapRowPainter extends CustomPainter {
   final double unitHeight;
   final double spacing;
   final ui.Image spriteSheet;
+
+  // REUSABLE PAINT OBJECTS to avoid GC pressure on main thread
+  static final Paint _mainPaint = Paint()..isAntiAlias = false;
+  static final Paint _hingePaint = Paint()
+    ..color = Colors.black.withOpacity(0.6)
+    ..strokeWidth = 1.0;
+  static final Paint _pinPaint = Paint()
+    ..color = Colors.white.withOpacity(0.15)
+    ..style = PaintingStyle.fill;
 
   SplitFlapRowPainter({
     required this.animationValue,
@@ -358,36 +371,31 @@ class SplitFlapRowPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final Paint mainPaint = Paint();
     for (int i = 0; i < currentIndices.length; i++) {
-        _drawUnit(canvas, i * (unitWidth + spacing), currentIndices[i], remainingSteps[i], mainPaint);
+        _drawUnit(canvas, i * (unitWidth + spacing), currentIndices[i], remainingSteps[i]);
     }
   }
 
-  void _drawUnit(Canvas canvas, double x, int currentIndex, int remaining, Paint paint) {
+  void _drawUnit(Canvas canvas, double x, int currentIndex, int remaining, [Paint? unused]) {
       final bool isActive = remaining > 0;
       final double val = isActive ? animationValue : 0.0;
       final double halfH = unitHeight / 2;
 
       // 1. STATIC OPTIMIZATION: If not moving, draw directly and stop.
-      // This prevents "ghosting" from characters underneath.
       if (val < 0.001) {
-        _drawHalf(canvas, Offset(x, 0), currentIndex, true, paint);
-        _drawHalf(canvas, Offset(x, halfH), currentIndex, false, paint);
+        _drawHalf(canvas, Offset(x, 0), currentIndex, true, 0.0);
+        _drawHalf(canvas, Offset(x, halfH), currentIndex, false, 0.0);
         
-        final Paint hingeLinePaint = Paint()..color = Colors.black.withOpacity(0.6)..strokeWidth = 1.0;
-        canvas.drawLine(Offset(x, halfH), Offset(x + unitWidth, halfH), hingeLinePaint);
-        
-        final Paint pinPaint = Paint()..color = Colors.white24..style = PaintingStyle.fill;
-        canvas.drawCircle(Offset(x + 1.5, halfH), 0.8, pinPaint);
-        canvas.drawCircle(Offset(x + unitWidth - 1.5, halfH), 0.8, pinPaint);
+        canvas.drawLine(Offset(x, halfH), Offset(x + unitWidth, halfH), _hingePaint);
+        canvas.drawCircle(Offset(x + 1.5, halfH), 0.8, _pinPaint);
+        canvas.drawCircle(Offset(x + unitWidth - 1.5, halfH), 0.8, _pinPaint);
         return;
       }
 
       // 2. ACTIVE ANIMATION LOGIC:
       final int nextIndex = (currentIndex + 1) % alphabet.length;
-      _drawHalf(canvas, Offset(x, 0), nextIndex, true, paint);
-      _drawHalf(canvas, Offset(x, halfH), currentIndex, false, paint, shading: val > 0.5 ? (1.0 - val) * 0.35 : 0.0);
+      _drawHalf(canvas, Offset(x, 0), nextIndex, true, 0.0);
+      _drawHalf(canvas, Offset(x, halfH), currentIndex, false, val > 0.5 ? (1.0 - val) * 0.35 : 0.0);
 
       final double angle = val * math.pi;
       canvas.save();
@@ -403,35 +411,32 @@ class SplitFlapRowPainter extends CustomPainter {
       if (val > 0.5) {
         canvas.save();
         canvas.rotate(math.pi);
-        _drawHalf(canvas, Offset(-unitWidth / 2, -halfH), nextIndex, false, paint, shading: flapShading);
+        _drawHalf(canvas, Offset(-unitWidth / 2, -halfH), nextIndex, false, flapShading);
         canvas.restore();
       } else {
-        _drawHalf(canvas, Offset(-unitWidth / 2, -halfH), currentIndex, true, paint, shading: flapShading);
+        _drawHalf(canvas, Offset(-unitWidth / 2, -halfH), currentIndex, true, flapShading);
       }
       canvas.restore();
 
-      final Paint hingeLinePaint = Paint()..color = Colors.black.withOpacity(0.6)..strokeWidth = 1.0;
-      canvas.drawLine(Offset(x, halfH), Offset(x + unitWidth, halfH), hingeLinePaint);
-
-      final Paint pinPaint = Paint()..color = Colors.white24..style = PaintingStyle.fill;
-      canvas.drawCircle(Offset(x + 1.5, halfH), 0.8, pinPaint);
-      canvas.drawCircle(Offset(x + unitWidth - 1.5, halfH), 0.8, pinPaint);
+      canvas.drawLine(Offset(x, halfH), Offset(x + unitWidth, halfH), _hingePaint);
+      canvas.drawCircle(Offset(x + 1.5, halfH), 0.8, _pinPaint);
+      canvas.drawCircle(Offset(x + unitWidth - 1.5, halfH), 0.8, _pinPaint);
   }
 
-  void _drawHalf(Canvas canvas, Offset offset, int charIndex, bool isTop, Paint paint, {double shading = 0.0}) {
+  void _drawHalf(Canvas canvas, Offset offset, int charIndex, bool isTop, double shading) {
     final src = _getCharRect(charIndex, isTop);
     
     if (shading > 0.01) {
-        paint.colorFilter = ColorFilter.mode(Colors.black.withOpacity(shading), BlendMode.multiply);
+        _mainPaint.colorFilter = ColorFilter.mode(Colors.black.withOpacity(shading), BlendMode.multiply);
     } else {
-        paint.colorFilter = null;
+        _mainPaint.colorFilter = null;
     }
 
     canvas.drawImageRect(
         spriteSheet,
         src,
         Rect.fromLTWH(offset.dx, offset.dy, unitWidth, unitHeight / 2),
-        paint
+        _mainPaint
     );
   }
 

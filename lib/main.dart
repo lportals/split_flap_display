@@ -31,7 +31,6 @@ class DepartureBoardScreen extends StatefulWidget {
 }
 
 class _DepartureBoardScreenState extends State<DepartureBoardScreen> {
-  // Datos Estáticos para evitar duplicados en renderizado
   final List<DepartureData> _rows = [
     DepartureData('AB 1234', '09:15', 'NEW YORK', 'A01', 'BOARDING'),
     DepartureData('CD 5678', '09:30', 'PRAGUE', 'B04', 'ON TIME'),
@@ -46,38 +45,18 @@ class _DepartureBoardScreenState extends State<DepartureBoardScreen> {
   ];
 
   final Color _yellow = const Color(0xFFFFD100); 
-  String _time = "--:--";
   bool _shuffling = false;
 
   @override
   void initState() {
     super.initState();
-    _startClock();
     _initBoard();
   }
 
-  /// Preloads audio assets, then kicks off the first shuffle.
-  /// The first shuffle will be visually active but silent (no user gesture
-  /// yet). Audio unlocks transparently on the first tap anywhere.
   void _initBoard() async {
     await FlapSoundManager.instance.init();
-    // Small delay so the user sees the board "wake up"
     await Future.delayed(const Duration(milliseconds: 600));
     if (mounted) _shuffle();
-  }
-
-  void _startClock() {
-    _updateTime();
-    Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) return;
-      _updateTime();
-    });
-  }
-
-  void _updateTime() {
-    final now = DateTime.now();
-    final newT = "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
-    if (newT != _time) setState(() => _time = newT);
   }
 
   void _shuffle() async {
@@ -87,7 +66,8 @@ class _DepartureBoardScreenState extends State<DepartureBoardScreen> {
     final tempRows = List<DepartureData>.from(_rows);
     tempRows.shuffle();
     for (int i = 0; i < _rows.length; i++) {
-       await Future.delayed(const Duration(milliseconds: 150));
+       // Slightly more delay on mobile to give UI thread more breath
+       await Future.delayed(const Duration(milliseconds: 200));
        if (!mounted) break;
        setState(() {
          _rows[i] = tempRows[i];
@@ -97,7 +77,6 @@ class _DepartureBoardScreenState extends State<DepartureBoardScreen> {
   }
 
   void _onShufflePressed() {
-     // Force audio context unlock on first button press
      FlapSoundManager.instance.playClick();
      _shuffle();
   }
@@ -105,8 +84,6 @@ class _DepartureBoardScreenState extends State<DepartureBoardScreen> {
   @override
   Widget build(BuildContext context) {
     final double scW = MediaQuery.of(context).size.width;
-    
-    // BREAKPOINTS REFINADOS
     final bool isDesktop = scW > 1024;
     final bool isTablet = !isDesktop && scW > 640;
     final bool isMobile = scW <= 640;
@@ -129,10 +106,7 @@ class _DepartureBoardScreenState extends State<DepartureBoardScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Center(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: _buildMainBoard(isDesktop, isTablet, isMobile),
-                ),
+                child: _buildMainBoard(isDesktop, isTablet, isMobile),
               ),
               const SizedBox(height: 50),
               _buildButton(),
@@ -143,24 +117,19 @@ class _DepartureBoardScreenState extends State<DepartureBoardScreen> {
     );
   }
 
-
   Widget _buildMainBoard(bool isDesktop, bool isTablet, bool isMobile) {
-    // Exact dimensions calculation helper
     double getColW(int chars, double uW, double spa) => (chars * uW) + ((chars - 1) * spa);
 
-    // Dynamic dimensions based on Device
     final double h = isDesktop ? 38 : (isTablet ? 32 : 28);
     final double w = isDesktop ? 20 : (isTablet ? 18 : 16);
     const double sp = 3.0;
 
-    // Fixed character lengths per column
-    const int lenF = 7; // FLIGHT
-    const int lenT = 5; // TIME
-    final int lenD = isDesktop ? 12 : 15; // Set to 15 for both mobile/tablet for consistency
-    const int lenG = 3; // GATE
-    const int lenS = 8; // STATUS
+    const int lenF = 7;
+    const int lenT = 5;
+    final int lenD = isDesktop ? 12 : 15;
+    const int lenG = 3;
+    const int lenS = 8;
 
-    // Exact Widths for Columns
     final double wF = isDesktop ? getColW(lenF, w, sp) : 0;
     final double wT = getColW(lenT, w, sp);
     final double wD = getColW(lenD, w, sp);
@@ -169,7 +138,6 @@ class _DepartureBoardScreenState extends State<DepartureBoardScreen> {
     
     final double gap = isDesktop ? 30 : (isTablet ? 20 : 12);
 
-    // Calculate total layout width for centering
     double totalW = wT + gap + wD;
     if (isTablet) totalW = wT + gap + wD + gap + wS;
     if (isDesktop) totalW = wF + gap + wT + gap + wD + gap + wG + gap + wS;
@@ -181,149 +149,69 @@ class _DepartureBoardScreenState extends State<DepartureBoardScreen> {
         borderRadius: BorderRadius.circular(28),
         border: Border.all(color: Colors.white.withOpacity(0.08), width: 1.2),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.95), blurRadius: 60, spreadRadius: 10),
-          BoxShadow(color: _yellow.withOpacity(0.015), blurRadius: 120, spreadRadius: 2),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.95), 
+            blurRadius: isMobile ? 30 : 60, 
+            spreadRadius: isMobile ? 5 : 10
+          ),
+          if (!isMobile) BoxShadow(
+            color: _yellow.withOpacity(0.015), 
+            blurRadius: 120, 
+            spreadRadius: 2
+          ),
         ],
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildHeader(isMobile, totalW, wT, h, w, sp),
-          const SizedBox(height: 40),
-          _buildColumns(isDesktop, isTablet, isMobile, wF, wT, wD, wG, wS, gap),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            child: Divider(color: Colors.white.withOpacity(0.04), height: 1, thickness: 1),
-          ),
-          // Rows Render
-          ..._rows.asMap().entries.map((entry) {
-            final int index = entry.key;
-            final DepartureData rowData = entry.value;
-            return Padding(
-              key: ValueKey('board_row_$index'),
-              padding: const EdgeInsets.symmetric(vertical: 5.5),
-              child: _buildRow(rowData, isDesktop, isTablet, isMobile, wF, wT, wD, wG, wS, gap, h, w, sp, lenF, lenT, lenD, lenG, lenS),
-            );
-          }),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeader(bool isMobile, double width, double wT, double h, double w, double sp) {
-    return SizedBox(
-      width: width,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: _yellow,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [BoxShadow(color: _yellow.withOpacity(0.4), blurRadius: 20, spreadRadius: -5)]
-                ),
-                child: Icon(Icons.flight_takeoff, color: Colors.black, size: isMobile ? 18 : 28),
-              ),
-              const SizedBox(width: 18),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text("FLIGHT DEPARTURES", 
-                    style: TextStyle(
-                      color: Colors.white, 
-                      fontSize: isMobile ? 16 : 28, 
-                      fontWeight: FontWeight.w900, 
-                      letterSpacing: -0.6
-                    )
-                  ),
-                  Text("REAL-TIME GLOBAL STATUS", 
-                    style: TextStyle(
-                      color: _yellow.withOpacity(0.6), 
-                      fontSize: isMobile ? 7 : 9, 
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 2
-                    )
-                  ),
-                ],
-              ),
-            ],
-          ),
-          if (!isMobile) Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text("LOCAL TIME", style: TextStyle(color: _yellow.withOpacity(0.3), fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
-              const SizedBox(height: 6),
-              // Time at the top matches exactly the width of the Time column for symmetry
-              SizedBox(
-                width: wT,
-                child: SplitFlapRow(
-                  key: const ValueKey('header_clock_flap'),
-                  text: _time, 
-                  maxLength: 5, 
-                  unitWidth: w, 
-                  unitHeight: h, 
-                  spacing: sp, 
-                  textColor: _yellow, 
-                  silent: true
-                ),
-              ),
-            ],
-          ),
-        ],
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _BoardHeader(isMobile: isMobile, width: totalW, wT: wT, h: h, w: w, sp: sp, yellow: _yellow),
+            const SizedBox(height: 40),
+            _buildColumnTitles(isDesktop, isTablet, isMobile, wF, wT, wD, wG, wS, gap),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              child: Divider(color: Colors.white.withOpacity(0.04), height: 1, thickness: 1),
+            ),
+            _BoardGrid(
+              rows: _rows,
+              isDesktop: isDesktop, isTablet: isTablet, isMobile: isMobile,
+              wF: wF, wT: wT, wD: wD, wG: wG, wS: wS,
+              gap: gap, h: h, w: w, sp: sp,
+              lenF: lenF, lenT: lenT, lenD: lenD, lenG: lenG, lenS: lenS,
+              yellow: _yellow,
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildColumns(bool isD, bool isT, bool isM, double wF, double wT, double wD, double wG, double wS, double gap) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (isD) ...[_title("FLIGHT", wF), SizedBox(width: gap)],
-        _title("TIME", wT),
-        SizedBox(width: gap),
-        _title("DESTINATION", wD),
-        if (isD) ...[SizedBox(width: gap), _title("GATE", wG)],
-        if (!isM) ...[SizedBox(width: gap), _title("STATUS", wS)],
-      ],
-    );
-  }
-
-  Widget _title(String txt, double w) => SizedBox(
-    width: w, 
-    child: Text(txt, 
-      style: TextStyle(
-        color: Colors.white.withOpacity(0.12), 
-        fontSize: 10, 
-        fontWeight: FontWeight.w800, 
-        letterSpacing: 2.0
+  Widget _buildColumnTitles(bool isD, bool isT, bool isM, double wF, double wT, double wD, double wG, double wS, double gap) {
+    Widget title(String txt, double w) => SizedBox(
+      width: w, 
+      child: Text(txt, 
+        style: TextStyle(
+          color: Colors.white.withOpacity(0.12), 
+          fontSize: 10, 
+          fontWeight: FontWeight.w800, 
+          letterSpacing: 2.0
+        )
       )
-    )
-  );
+    );
 
-  Widget _buildRow(DepartureData d, bool isD, bool isT, bool isM, double wF, double wT, double wD, double wG, double wS, double gap, double h, double w, double sp, int lenF, int lenT, int lenD, int lenG, int lenS) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (isD) ...[_flap(lenF, d.flight, h, w, sp, wF, Colors.white), SizedBox(width: gap)],
-        _flap(lenT, d.time, h, w, sp, wT, _yellow),
+        if (isD) ...[title("FLIGHT", wF), SizedBox(width: gap)],
+        title("TIME", wT),
         SizedBox(width: gap),
-        _flap(lenD, d.destination, h, w, sp, wD, Colors.white),
-        if (isD) ...[SizedBox(width: gap), _flap(lenG, d.gate, h, w, sp, wG, _yellow)],
-        if (!isM) ...[SizedBox(width: gap), _flap(lenS, d.status, h, w, sp, wS, Colors.white)],
+        title("DESTINATION", wD),
+        if (isD) ...[SizedBox(width: gap), title("GATE", wG)],
+        if (!isM) ...[SizedBox(width: gap), title("STATUS", wS)],
       ],
     );
-  }
-
-  Widget _flap(int max, String val, double h, double w, double sp, double containerW, Color col) {
-     if (containerW <= 0) return const SizedBox.shrink();
-     return SizedBox(
-       width: containerW,
-       child: SplitFlapRow(text: val, maxLength: max, unitWidth: w, unitHeight: h, spacing: sp, textColor: col),
-     );
   }
 
   Widget _buildButton() {
@@ -346,6 +234,191 @@ class _DepartureBoardScreenState extends State<DepartureBoardScreen> {
         ),
       ),
     );
+  }
+}
+
+class _BoardHeader extends StatelessWidget {
+  final bool isMobile;
+  final double width;
+  final double wT;
+  final double h;
+  final double w;
+  final double sp;
+  final Color yellow;
+
+  const _BoardHeader({
+    required this.isMobile,
+    required this.width,
+    required this.wT,
+    required this.h,
+    required this.w,
+    required this.sp,
+    required this.yellow,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: yellow,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [BoxShadow(color: yellow.withOpacity(0.4), blurRadius: 20, spreadRadius: -5)]
+                ),
+                child: Icon(Icons.flight_takeoff, color: Colors.black, size: isMobile ? 18 : 28),
+              ),
+              const SizedBox(width: 18),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("FLIGHT DEPARTURES", 
+                    style: TextStyle(
+                      color: Colors.white, 
+                      fontSize: isMobile ? 16 : 28, 
+                      fontWeight: FontWeight.w900, 
+                      letterSpacing: -0.6
+                    )
+                  ),
+                  Text("REAL-TIME GLOBAL STATUS", 
+                    style: TextStyle(
+                      color: yellow.withOpacity(0.6), 
+                      fontSize: isMobile ? 7 : 9, 
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 2
+                    )
+                  ),
+                ],
+              ),
+            ],
+          ),
+          if (!isMobile) _ClockWidget(wT: wT, w: w, h: h, sp: sp, yellow: yellow),
+        ],
+      ),
+    );
+  }
+}
+
+class _ClockWidget extends StatefulWidget {
+  final double wT;
+  final double w;
+  final double h;
+  final double sp;
+  final Color yellow;
+
+  const _ClockWidget({required this.wT, required this.w, required this.h, required this.sp, required this.yellow});
+
+  @override
+  State<_ClockWidget> createState() => _ClockWidgetState();
+}
+
+class _ClockWidgetState extends State<_ClockWidget> {
+  String _time = "--:--";
+  late Timer _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _updateTime();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _updateTime());
+  }
+
+  void _updateTime() {
+    final now = DateTime.now();
+    final newT = "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
+    if (newT != _time) {
+      if (mounted) setState(() => _time = newT);
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text("LOCAL TIME", style: TextStyle(color: widget.yellow.withOpacity(0.3), fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+        const SizedBox(height: 6),
+        SizedBox(
+          width: widget.wT,
+          child: SplitFlapRow(
+            key: const ValueKey('header_clock_flap'),
+            text: _time, 
+            maxLength: 5, 
+            unitWidth: widget.w, 
+            unitHeight: widget.h, 
+            spacing: widget.sp, 
+            textColor: widget.yellow, 
+            silent: true
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BoardGrid extends StatelessWidget {
+  final List<DepartureData> rows;
+  final bool isDesktop;
+  final bool isTablet;
+  final bool isMobile;
+  final double wF, wT, wD, wG, wS, gap, h, w, sp;
+  final int lenF, lenT, lenD, lenG, lenS;
+  final Color yellow;
+
+  const _BoardGrid({
+    required this.rows,
+    required this.isDesktop, required this.isTablet, required this.isMobile,
+    required this.wF, required this.wT, required this.wD, required this.wG, required this.wS,
+    required this.gap, required this.h, required this.w, required this.sp,
+    required this.lenF, required this.lenT, required this.lenD, required this.lenG, required this.lenS,
+    required this.yellow,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: List.generate(rows.length, (index) {
+        return RepaintBoundary(
+          key: ValueKey('board_row_repaint_$index'),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 5.5),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (isDesktop) ...[_flap(lenF, rows[index].flight, wF, Colors.white), SizedBox(width: gap)],
+                _flap(lenT, rows[index].time, wT, yellow),
+                SizedBox(width: gap),
+                _flap(lenD, rows[index].destination, wD, Colors.white),
+                if (isDesktop) ...[SizedBox(width: gap), _flap(lenG, rows[index].gate, wG, yellow)],
+                if (!isMobile) ...[SizedBox(width: gap), _flap(lenS, rows[index].status, wS, Colors.white)],
+              ],
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _flap(int max, String val, double containerW, Color col) {
+     if (containerW <= 0) return const SizedBox.shrink();
+     return SizedBox(
+       width: containerW,
+       child: SplitFlapRow(text: val, maxLength: max, unitWidth: w, unitHeight: h, spacing: sp, textColor: col),
+     );
   }
 }
 
