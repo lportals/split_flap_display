@@ -71,6 +71,8 @@ class FlapSoundManager {
 
   final AudioPlayer _rainPlayer = AudioPlayer();
   Timer? _stopTimer;
+  Timer? _clickPulseTimer;
+  bool _clickRequested = false;
 
   // ---------------------------------------------------------------------------
   // Public API
@@ -90,6 +92,15 @@ class FlapSoundManager {
       await _rainPlayer.setAsset('assets/audio/flap_rain_loop.mp3', preload: true);
       await _rainPlayer.setLoopMode(LoopMode.one);
       await _rainPlayer.setVolume(0);
+      
+      // Start the click accumulator pulse (20Hz loop for clicks)
+      _clickPulseTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+        if (_clickRequested && _isInitialized) {
+          _clickRequested = false;
+          _dispatchRealClick();
+        }
+      });
+
       _isInitialized = true;
     } catch (_) {
       // Audio is non-critical; never crash the UI.
@@ -127,41 +138,42 @@ class FlapSoundManager {
   ///
   /// Applies a density-based throttle and inverse volume curve so clicks
   /// remain crisp when sparse and merge into a "brrrr" when dense.
+  /// Signals that a click should ideally be played.
+  /// The manager will decide if it actually plays it based on its own timing pulse
+  /// to avoid overwhelming the platform channel (Accumulator Pattern).
   void playClick() {
+    _clickRequested = true;
+  }
+
+  /// Internal: Actually sends a single click event to the hardware/engine.
+  /// This is called MUCH less frequently than playClick() to avoid jank.
+  void _dispatchRealClick() {
     if (!_isInitialized) return;
 
-    final now = DateTime.now();
     final double density = (_activeUnits / maxBoardCapacity).clamp(0.0, 1.0);
-
-    // Throttle: 55 ms at idle → 18 ms at full density
-    final int throttleMs = (50 - (density * 32)).toInt();
-    if (now.difference(_lastClickTime).inMilliseconds < throttleMs) return;
-    _lastClickTime = now;
-
-    // Volume: loud when sparse, auto-attenuated when dense
-    final double vol = 0.85 * math.pow(1.0 - (density * 0.6), 1.3);
+    // Inverse volume: sparse is loud, dense is attenuated (the rain loop provides the mass)
+    final double vol = 0.7 * math.pow(1.0 - (density * 0.5), 1.3);
 
     final player = _clickPool[_nextClickIndex];
     _nextClickIndex = (_nextClickIndex + 1) % _poolSize;
 
     try {
+      player.setVolume(vol.clamp(0.0, 1.0)).catchError((_) => null);
       player.seek(Duration.zero).catchError((_) => null);
-      player.setVolume(vol.clamp(0.05, 1.0)).catchError((_) => null);
       player.play().catchError((_) => null);
     } catch (_) {}
   }
 
-  /// Triggers haptic feedback with a global throttle to preserve UI thread budget.
+  /// Triggers haptic feedback. Throttled to preserve UI thread budget.
+  /// Note: Currently disabled on WEB due to inconsistent synchronous overhead.
   void playHaptic() {
-    final now = DateTime.now();
-    // No more than 1 haptic burst every 40 ms globally
-    if (now.difference(_lastHapticTime).inMilliseconds < 40) return;
-    _lastHapticTime = now;
-    HapticFeedback.lightImpact().catchError((_) => null);
+    // Disabled on Web to maximize animation performance
+    return;
   }
 
   /// Releases all player resources.
   void dispose() {
+    _clickPulseTimer?.cancel();
     _stopTimer?.cancel();
     for (final p in _clickPool) {
       p.dispose();
