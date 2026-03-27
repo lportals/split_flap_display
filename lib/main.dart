@@ -254,7 +254,16 @@ class _DepartureBoardScreenState extends State<DepartureBoardScreen> {
               // Time at the top matches exactly the width of the Time column for symmetry
               SizedBox(
                 width: wT,
-                child: SplitFlapRow(text: _time, maxLength: 5, unitWidth: w, unitHeight: h, spacing: sp, textColor: _yellow, silent: true),
+                child: SplitFlapRow(
+                  key: const ValueKey('header_clock_flap'),
+                  text: _time, 
+                  maxLength: 5, 
+                  unitWidth: w, 
+                  unitHeight: h, 
+                  spacing: sp, 
+                  textColor: _yellow, 
+                  silent: true
+                ),
               ),
             ],
           ),

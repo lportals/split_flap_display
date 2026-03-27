@@ -179,6 +179,7 @@ class _SplitFlapRowState extends State<SplitFlapRow> with SingleTickerProviderSt
       tp.layout();
       
       final double textX = (widget.unitWidth - tp.width) / 2;
+      // Precision centering: Use the actual ascent/descent box instead of just Height
       final double textY = (isTop ? 0 : -widget.unitHeight / 2) + (widget.unitHeight - tp.height) / 2;
       tp.paint(canvas, Offset(textX, textY));
       
@@ -191,7 +192,15 @@ class _SplitFlapRowState extends State<SplitFlapRow> with SingleTickerProviderSt
       final targetChar = paddedText[i].toUpperCase();
       final targetIdx = alphabet.indexOf(targetChar);
       _targetIndices[i] = (targetIdx == -1) ? 0 : targetIdx;
-      _remainingSteps[i] = (_targetIndices[i] - _currentIndices[i] + alphabet.length) % alphabet.length;
+      
+      // HARD GUARD: If it's a separator (colon or dot), force it to be static immediately.
+      // This prevents the clock separator from "dancing" during minute changes.
+      if (targetChar == ':' || targetChar == '.') {
+        _currentIndices[i] = _targetIndices[i];
+        _remainingSteps[i] = 0;
+      } else {
+        _remainingSteps[i] = (_targetIndices[i] - _currentIndices[i] + alphabet.length) % alphabet.length;
+      }
     }
     
     // Notify activity to sound manager (only if this row is not silent)
@@ -354,17 +363,32 @@ class SplitFlapRowPainter extends CustomPainter {
 
   void _drawUnit(Canvas canvas, double x, int currentIndex, int remaining, Paint paint) {
       final bool isActive = remaining > 0;
-      final int nextIndex = (currentIndex + 1) % alphabet.length;
-      
       final double val = isActive ? animationValue : 0.0;
-      const double hingeGap = 1.0;
+      final double halfH = unitHeight / 2;
 
+      // 1. STATIC OPTIMIZATION: If not moving, draw directly and stop.
+      // This prevents "ghosting" from characters underneath.
+      if (val < 0.001) {
+        _drawHalf(canvas, Offset(x, 0), currentIndex, true, paint);
+        _drawHalf(canvas, Offset(x, halfH), currentIndex, false, paint);
+        
+        final Paint hingeLinePaint = Paint()..color = Colors.black.withOpacity(0.6)..strokeWidth = 1.0;
+        canvas.drawLine(Offset(x, halfH), Offset(x + unitWidth, halfH), hingeLinePaint);
+        
+        final Paint pinPaint = Paint()..color = Colors.white24..style = PaintingStyle.fill;
+        canvas.drawCircle(Offset(x + 1.5, halfH), 0.8, pinPaint);
+        canvas.drawCircle(Offset(x + unitWidth - 1.5, halfH), 0.8, pinPaint);
+        return;
+      }
+
+      // 2. ACTIVE ANIMATION LOGIC:
+      final int nextIndex = (currentIndex + 1) % alphabet.length;
       _drawHalf(canvas, Offset(x, 0), nextIndex, true, paint);
-      _drawHalf(canvas, Offset(x, unitHeight / 2 + hingeGap), currentIndex, false, paint, shading: val > 0.5 ? (1.0 - val) * 0.35 : 0.0);
+      _drawHalf(canvas, Offset(x, halfH), currentIndex, false, paint, shading: val > 0.5 ? (1.0 - val) * 0.35 : 0.0);
 
       final double angle = val * math.pi;
       canvas.save();
-      canvas.translate(x + unitWidth / 2, unitHeight / 2);
+      canvas.translate(x + unitWidth / 2, halfH);
       
       final Matrix4 matrix = Matrix4.identity()
         ..setEntry(3, 2, 0.002)
@@ -376,16 +400,19 @@ class SplitFlapRowPainter extends CustomPainter {
       if (val > 0.5) {
         canvas.save();
         canvas.rotate(math.pi);
-        _drawHalf(canvas, Offset(-unitWidth / 2, -unitHeight / 2 + hingeGap), nextIndex, false, paint, shading: flapShading);
+        _drawHalf(canvas, Offset(-unitWidth / 2, -halfH), nextIndex, false, paint, shading: flapShading);
         canvas.restore();
       } else {
-        _drawHalf(canvas, Offset(-unitWidth / 2, -unitHeight / 2), currentIndex, true, paint, shading: flapShading);
+        _drawHalf(canvas, Offset(-unitWidth / 2, -halfH), currentIndex, true, paint, shading: flapShading);
       }
       canvas.restore();
 
+      final Paint hingeLinePaint = Paint()..color = Colors.black.withOpacity(0.6)..strokeWidth = 1.0;
+      canvas.drawLine(Offset(x, halfH), Offset(x + unitWidth, halfH), hingeLinePaint);
+
       final Paint pinPaint = Paint()..color = Colors.white24..style = PaintingStyle.fill;
-      canvas.drawCircle(Offset(x + 1.5, unitHeight / 2), 0.8, pinPaint);
-      canvas.drawCircle(Offset(x + unitWidth - 1.5, unitHeight / 2), 0.8, pinPaint);
+      canvas.drawCircle(Offset(x + 1.5, halfH), 0.8, pinPaint);
+      canvas.drawCircle(Offset(x + unitWidth - 1.5, halfH), 0.8, pinPaint);
   }
 
   void _drawHalf(Canvas canvas, Offset offset, int charIndex, bool isTop, Paint paint, {double shading = 0.0}) {
@@ -400,13 +427,21 @@ class SplitFlapRowPainter extends CustomPainter {
     canvas.drawImageRect(
         spriteSheet,
         src,
-        Rect.fromLTWH(offset.dx, offset.dy, unitWidth, unitHeight / 2 - 1.0),
+        Rect.fromLTWH(offset.dx, offset.dy, unitWidth, unitHeight / 2),
         paint
     );
   }
 
   @override
   bool shouldRepaint(covariant SplitFlapRowPainter oldDelegate) {
-    return oldDelegate.animationValue != animationValue;
+    // Repaint if the animation is moving OR if the underlying data has changed
+    if (oldDelegate.animationValue != animationValue) return true;
+    
+    for (int i = 0; i < currentIndices.length; i++) {
+        if (oldDelegate.currentIndices[i] != currentIndices[i]) return true;
+        if (oldDelegate.remainingSteps[i] != remainingSteps[i]) return true;
+    }
+    
+    return false;
   }
 }
