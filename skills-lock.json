@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "skills": {
+    "dart-expert": {
+      "source": "personamanagmentlayer/pcl",
+      "sourceType": "github",
+      "computedHash": "51b8de96b1a8c4ecad9be3c65ff2195d77dbc96ac3b8a874615440af81d71324"
+    },
+    "flutter-expert": {
+      "source": "jeffallan/claude-skills",
+      "sourceType": "github",
+      "computedHash": "273a5eeae0e1e61e47039ca3abc4884e8479dec8d28c6d851c79c77ad039e63f"
+    }
+  }
+}

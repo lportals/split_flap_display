@@ -47,6 +47,9 @@ class FlapSoundManager {
 
   /// Number of pre-loaded click players in the round-robin pool.
   static const int _poolSize = 4;
+  double _lastDensityValue = -1.0;
+  double _lastSpeedValue = -1.0;
+  double _lastVolumeValue = -1.0;
 
   // ---------------------------------------------------------------------------
   // State
@@ -81,18 +84,10 @@ class FlapSoundManager {
   Future<void> init() async {
     if (_isInitialized) return;
 
-    // Detect mobile platform (Android/iOS)
-    // ignore: unused_local_variable
-    final isMobile = defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS;
-    
-    // Audio is now optimized for mobile via the Accumulator Pattern 
-    // and rebuild isolation in the UI.
-
     try {
       for (int i = 0; i < _poolSize; i++) {
         final player = AudioPlayer();
         await player.setAsset('assets/audio/flap_single.mp3', preload: true);
-        await player.setVolume(0);
         _clickPool.add(player);
       }
       await _rainPlayer.setAsset('assets/audio/flap_rain_loop.mp3', preload: true);
@@ -109,7 +104,7 @@ class FlapSoundManager {
 
       _isInitialized = true;
     } catch (_) {
-      // Audio is non-critical; never crash the UI.
+      // Audio non-critical
     }
   }
 
@@ -136,7 +131,7 @@ class FlapSoundManager {
     _updateAmbientMix();
   }
 
-  /// Fires a single mechanical click from the polyphonic pool.
+  /// Fires a click sound (throttled by the pulse timer).
   ///
   /// Every call is wrapped in catchError so the engine never crashes.
   /// Before the browser AudioContext is unlocked (no user gesture yet),
@@ -144,9 +139,6 @@ class FlapSoundManager {
   ///
   /// Applies a density-based throttle and inverse volume curve so clicks
   /// remain crisp when sparse and merge into a "brrrr" when dense.
-  /// Signals that a click should ideally be played.
-  /// The manager will decide if it actually plays it based on its own timing pulse
-  /// to avoid overwhelming the platform channel (Accumulator Pattern).
   void playClick() {
     _clickRequested = true;
   }
@@ -157,23 +149,21 @@ class FlapSoundManager {
     if (!_isInitialized) return;
 
     final double density = (_activeUnits / maxBoardCapacity).clamp(0.0, 1.0);
-    // Inverse volume: sparse is loud, dense is attenuated (the rain loop provides the mass)
-    final double vol = 0.7 * math.pow(1.0 - (density * 0.5), 1.3);
+    final double volValue = 0.65 * math.pow(1.0 - (density * 0.4), 1.5);
 
     final player = _clickPool[_nextClickIndex];
     _nextClickIndex = (_nextClickIndex + 1) % _poolSize;
 
     try {
-      player.setVolume(vol.clamp(0.0, 1.0)).catchError((_) => null);
-      player.seek(Duration.zero).catchError((_) => null);
-      player.play().catchError((_) => null);
+      player.setVolume(volValue.clamp(0.01, 1.0)).catchError((e) => null);
+      player.seek(Duration.zero).catchError((e) => null);
+      player.play().catchError((e) => null);
     } catch (_) {}
   }
 
   /// Triggers haptic feedback. Throttled to preserve UI thread budget.
-  /// Note: Currently disabled on WEB due to inconsistent synchronous overhead.
   void playHaptic() {
-    // Disabled on Web to maximize animation performance
+    // Disabled on Web/Mobile to protect FPS budget
     return;
   }
 
@@ -181,9 +171,7 @@ class FlapSoundManager {
   void dispose() {
     _clickPulseTimer?.cancel();
     _stopTimer?.cancel();
-    for (final p in _clickPool) {
-      p.dispose();
-    }
+    for (final p in _clickPool) p.dispose();
     _rainPlayer.dispose();
   }
 
@@ -202,18 +190,19 @@ class FlapSoundManager {
     if (!_isInitialized) return;
 
     final now = DateTime.now();
-    // Maximum 10 ambient updates per second (100ms throttle).
-    // The rain loop is a texture; it doesn't need high-frequency updates.
-    if (now.difference(_lastAmbientUpdateTime).inMilliseconds < 100 && _activeUnits > 0) return;
-    _lastAmbientUpdateTime = now;
+    // Throttle to 100ms or until density changes significantly
+    final double currentDensity = (_activeUnits / maxBoardCapacity).clamp(0.0, 1.0);
+    final bool significantChange = (currentDensity - _lastDensityValue).abs() > 0.05;
 
-    final double density = (_activeUnits / maxBoardCapacity).clamp(0.0, 1.0);
+    if (!significantChange && now.difference(_lastAmbientUpdateTime).inMilliseconds < 100 && _activeUnits > 0) return;
+    _lastAmbientUpdateTime = now;
+    _lastDensityValue = currentDensity;
 
     // ==== ALL UNITS STOPPED → STOP RAIN LOOP ====
     if (_activeUnits == 0) {
       _stopTimer?.cancel();
       _stopTimer = null;
-
+      _lastVolumeValue = 0;
       _rainPlayer.setVolume(0).catchError((_) => null);
       _rainPlayer.stop().catchError((_) => null);
       return;
@@ -223,16 +212,23 @@ class FlapSoundManager {
     _stopTimer?.cancel();
     _stopTimer = null;
 
-    final double loopVol = (math.pow(density, 0.4) * 0.75 + 0.08).clamp(0.0, 1.0);
-    final double speed = (0.96 + (density * 0.28)).clamp(0.5, 2.0);
+    final double loopVol = (math.pow(currentDensity, 0.45) * 0.7 + 0.05).clamp(0.0, 1.0);
+    final double speed = (1.0 + (currentDensity * 0.3)).clamp(0.5, 2.0);
 
     try {
       if (!_rainPlayer.playing) {
-          _rainPlayer.seek(Duration.zero).catchError((_) => null);
           _rainPlayer.play().catchError((_) => null);
       }
-      _rainPlayer.setVolume(loopVol).catchError((_) => null);
-      _rainPlayer.setSpeed(speed).catchError((_) => null);
+      
+      // Critical optimization: only call native side if values changed meaningfully
+      if ((loopVol - _lastVolumeValue).abs() > 0.02) {
+        _lastVolumeValue = loopVol;
+        _rainPlayer.setVolume(loopVol).catchError((_) => null);
+      }
+      if ((speed - _lastSpeedValue).abs() > 0.05) {
+        _lastSpeedValue = speed;
+        _rainPlayer.setSpeed(speed).catchError((_) => null);
+      }
     } catch (_) {}
   }
 }

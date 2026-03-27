@@ -17,10 +17,6 @@ class SplitFlapRow extends StatefulWidget {
   final Color flapColor;
   final Color textColor;
   final Duration flipDuration;
-
-  /// When true, this row does NOT report activity to [FlapSoundManager]
-  /// and does NOT trigger click sounds. Use for decorative rows like
-  /// the header clock that should animate silently.
   final bool silent;
 
   const SplitFlapRow({
@@ -52,6 +48,7 @@ class _SplitFlapRowState extends State<SplitFlapRow> with SingleTickerProviderSt
   static final Map<String, Future<ui.Image>> _pendingSpriteSheets = {};
 
   bool _isReady = false;
+  SplitFlapRowPainter? _cachedPainter;
 
   @override
   void initState() {
@@ -76,8 +73,8 @@ class _SplitFlapRowState extends State<SplitFlapRow> with SingleTickerProviderSt
   }
 
   Future<void> _startWarmup() async {
-    final String colorKey = widget.textColor.toARGB32().toString();
-    final String key = "${widget.unitWidth.toInt()}-${widget.unitHeight.toInt()}-$colorKey";
+    final int colorVal = widget.textColor.value;
+    final String key = "${widget.unitWidth.toInt()}-${widget.unitHeight.toInt()}-$colorVal";
     
     if (_spriteSheets.containsKey(key)) {
         if (mounted) setState(() => _isReady = true);
@@ -179,7 +176,6 @@ class _SplitFlapRowState extends State<SplitFlapRow> with SingleTickerProviderSt
       tp.layout();
       
       final double textX = (widget.unitWidth - tp.width) / 2;
-      // Precision centering: Use the actual ascent/descent box instead of just Height
       final double textY = (isTop ? 0 : -widget.unitHeight / 2) + (widget.unitHeight - tp.height) / 2;
       tp.paint(canvas, Offset(textX, textY));
       
@@ -193,8 +189,6 @@ class _SplitFlapRowState extends State<SplitFlapRow> with SingleTickerProviderSt
       final targetIdx = alphabet.indexOf(targetChar);
       _targetIndices[i] = (targetIdx == -1) ? 0 : targetIdx;
       
-      // HARD GUARD: If it's a separator (colon or dot), force it to be static immediately.
-      // This prevents the clock separator from "dancing" during minute changes.
       if (targetChar == ':' || targetChar == '.') {
         _currentIndices[i] = _targetIndices[i];
         _remainingSteps[i] = 0;
@@ -203,12 +197,9 @@ class _SplitFlapRowState extends State<SplitFlapRow> with SingleTickerProviderSt
       }
     }
     
-    // Notify activity to sound manager (only if this row is not silent)
     if (!widget.silent) {
       int active = 0;
-      for (var s in _remainingSteps) {
-        if (s > 0) active++;
-      }
+      for (var s in _remainingSteps) if (s > 0) active++;
       FlapSoundManager.instance.updateRowActivity(hashCode, active);
     }
   }
@@ -226,108 +217,89 @@ class _SplitFlapRowState extends State<SplitFlapRow> with SingleTickerProviderSt
     }
 
     if (wasActive && !widget.silent) {
-      // TRIGGER AUDIO:
-      // We play a discrete click for detail.
-      // The manager handles the background 'rain' volume based on global activity.
       FlapSoundManager.instance.playClick();
     }
 
     if (anyRemaining) {
       _controller.reset();
       _controller.forward();
-      if (math.Random().nextDouble() > 0.6) {
-        FlapSoundManager.instance.playHaptic();
-      }
     } else {
       _controller.reset();
       if (mounted) setState(() {});
     }
     
-    // Update local activity to the sound manager
     if (!widget.silent) {
       int active = 0;
-      for (var s in _remainingSteps) {
-        if (s > 0) active++;
-      }
+      for (var s in _remainingSteps) if (s > 0) active++;
       FlapSoundManager.instance.updateRowActivity(hashCode, active);
     }
-    // We only need to call setState if the animation stops.
-    // Otherwise, the AnimatedBuilder will keep triggering repaints for the new cycle.
   }
 
   @override
   void didUpdateWidget(SplitFlapRow oldWidget) {
     super.didUpdateWidget(oldWidget);
-    
-    bool needsUpdate = false;
-
-    // 1. If maxLength changes, we MUST re-initialize the lists to avoid index out of bounds
     if (oldWidget.maxLength != widget.maxLength) {
       _currentIndices = List.generate(widget.maxLength, (i) => (i < _currentIndices.length) ? _currentIndices[i] : 0);
       _targetIndices = List.generate(widget.maxLength, (i) => (i < _targetIndices.length) ? _targetIndices[i] : 0);
       _remainingSteps = List.generate(widget.maxLength, (i) => (i < _remainingSteps.length) ? _remainingSteps[i] : 0);
-      needsUpdate = true;
+      _updateTargets(widget.text);
+    } else if (oldWidget.text != widget.text) {
+      _updateTargets(widget.text);
     }
 
-    // 2. If text or maxLength changed, we update the targets
-    if (needsUpdate || oldWidget.text != widget.text) {
-      _updateTargets(widget.text);
-      if (!_controller.isAnimating && _remainingSteps.any((s) => s > 0) && _isReady) {
-        _controller.forward();
-      }
+    if (!_controller.isAnimating && _remainingSteps.any((s) => s > 0) && _isReady) {
+      _controller.forward();
     }
   }
-
-
 
   @override
   void dispose() {
     _controller.dispose();
-    // CRITICAL: Notify the sound manager that this row is no longer active
-    // before it is removed, to prevent "phantom" sounds.
-    if (!widget.silent) {
-      FlapSoundManager.instance.updateRowActivity(hashCode, 0);
-    }
+    if (!widget.silent) FlapSoundManager.instance.updateRowActivity(hashCode, 0);
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_isReady) return SizedBox(
-      height: widget.unitHeight, 
-      width: (widget.unitWidth * widget.maxLength) + (widget.spacing * (widget.maxLength - 1))
-    );
+    if (!_isReady) {
+      return SizedBox(
+        height: widget.unitHeight, 
+        width: (widget.unitWidth * widget.maxLength) + (widget.spacing * (widget.maxLength - 1))
+      );
+    }
 
-    final String colorKey = widget.textColor.toARGB32().toString();
-    final String key = "${widget.unitWidth.toInt()}-${widget.unitHeight.toInt()}-$colorKey";
+    // Use a simple string key for the specific color + size combination
+    final int colorVal = widget.textColor.value;
+    final String key = "${widget.unitWidth.toInt()}-${widget.unitHeight.toInt()}-$colorVal";
+    
     final sheet = _spriteSheets[key];
     if (sheet == null) return const SizedBox();
 
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
-          return CustomPaint(
-            size: Size(
-              (widget.unitWidth * widget.maxLength) + (widget.spacing * (widget.maxLength - 1)),
-              widget.unitHeight,
-            ),
-            painter: SplitFlapRowPainter(
-              animationValue: _controller.value,
-              currentIndices: _currentIndices,
-              remainingSteps: _remainingSteps,
-              unitWidth: widget.unitWidth,
-              unitHeight: widget.unitHeight,
-              spacing: widget.spacing,
-              spriteSheet: sheet,
-            ),
-          );
-        },
-      );
+        return CustomPaint(
+          size: Size(
+            (widget.unitWidth * widget.maxLength) + (widget.spacing * (widget.maxLength - 1)),
+            widget.unitHeight,
+          ),
+          painter: SplitFlapRowPainter(
+            val: _controller.value,
+            currentIndices: List.from(_currentIndices),
+            remainingSteps: List.from(_remainingSteps),
+            unitWidth: widget.unitWidth,
+            unitHeight: widget.unitHeight,
+            spacing: widget.spacing,
+            spriteSheet: sheet,
+          ),
+        );
+      },
+    );
   }
 }
 
 class SplitFlapRowPainter extends CustomPainter {
-  final double animationValue;
+  final double val;
   final List<int> currentIndices;
   final List<int> remainingSteps;
   final double unitWidth;
@@ -335,121 +307,117 @@ class SplitFlapRowPainter extends CustomPainter {
   final double spacing;
   final ui.Image spriteSheet;
 
-  // REUSABLE PAINT OBJECTS to avoid GC pressure on main thread
-  static final Paint _mainPaint = Paint()..isAntiAlias = false;
-  static final Paint _hingePaint = Paint()
-    ..color = Colors.black.withValues(alpha: 0.6)
-    ..strokeWidth = 1.0;
-  static final Paint _pinPaint = Paint()
-    ..color = Colors.white.withValues(alpha: 0.15)
-    ..style = PaintingStyle.fill;
+  // Static cache for Rects to avoid per-frame allocations
+  static final Map<String, List<Rect>> _rectCache = {};
+  
+  static final Paint _mainPaint = Paint()..filterQuality = FilterQuality.low;
+  static final Paint _shadingPaint = Paint()..style = PaintingStyle.fill;
+  static final Paint _hingePaint = Paint()..color = Colors.black..strokeWidth = 1.0;
+  static final Paint _pinPaint = Paint()..color = const Color(0x33FFFFFF)..style = PaintingStyle.fill;
 
   SplitFlapRowPainter({
-    required this.animationValue,
+    required this.val,
     required this.currentIndices,
     required this.remainingSteps,
     required this.unitWidth,
     required this.unitHeight,
     required this.spacing,
     required this.spriteSheet,
-  });
-
-  Rect _getCharRect(int charIndex, bool isTop) {
-      final int index = charIndex * 2 + (isTop ? 0 : 1);
+  }) {
+    final String key = "${unitWidth.toInt()}-${unitHeight.toInt()}";
+    if (!_rectCache.containsKey(key)) {
+      final List<Rect> rects = [];
       const int columns = 10;
-      final int row = index ~/ columns;
-      final int col = index % columns;
-      
-      const double pixelRatio = 2.0; 
-      return Rect.fromLTWH(
-          col * unitWidth * pixelRatio, 
-          row * (unitHeight / 2) * pixelRatio, 
-          unitWidth * pixelRatio, 
-          (unitHeight / 2) * pixelRatio
-      );
+      const double pr = 2.0; 
+      // 80 entries for alphabet.length * 2
+      for (int i = 0; i < 80; i++) {
+        final int row = i ~/ columns;
+        final int col = i % columns;
+        rects.add(Rect.fromLTWH(
+          col * unitWidth * pr,
+          row * (unitHeight / 2) * pr,
+          unitWidth * pr,
+          (unitHeight / 2) * pr,
+        ));
+      }
+      _rectCache[key] = rects;
+    }
   }
 
   @override
   void paint(Canvas canvas, Size size) {
+    final String rKey = "${unitWidth.toInt()}-${unitHeight.toInt()}";
+    final rects = _rectCache[rKey];
+    if (rects == null) return;
+
+    double x = 0;
+    final double halfH = unitHeight / 2;
+
     for (int i = 0; i < currentIndices.length; i++) {
-        _drawUnit(canvas, i * (unitWidth + spacing), currentIndices[i], remainingSteps[i]);
-    }
-  }
+      final int currIdx = currentIndices[i];
+      final int nextIdx = (currIdx + 1) % alphabet.length;
+      final bool active = remainingSteps[i] > 0;
+      final double progress = active ? val : 0.0;
 
-  void _drawUnit(Canvas canvas, double x, int currentIndex, int remaining, [Paint? unused]) {
-      final bool isActive = remaining > 0;
-      final double val = isActive ? animationValue : 0.0;
-      final double halfH = unitHeight / 2;
-
-      // 1. STATIC OPTIMIZATION: If not moving, draw directly and stop.
-      if (val < 0.001) {
-        _drawHalf(canvas, Offset(x, 0), currentIndex, true, 0.0);
-        _drawHalf(canvas, Offset(x, halfH), currentIndex, false, 0.0);
-        
-        canvas.drawLine(Offset(x, halfH), Offset(x + unitWidth, halfH), _hingePaint);
-        canvas.drawCircle(Offset(x + 1.5, halfH), 0.8, _pinPaint);
-        canvas.drawCircle(Offset(x + unitWidth - 1.5, halfH), 0.8, _pinPaint);
-        return;
-      }
-
-      // 2. ACTIVE ANIMATION LOGIC:
-      final int nextIndex = (currentIndex + 1) % alphabet.length;
-      _drawHalf(canvas, Offset(x, 0), nextIndex, true, 0.0);
-      _drawHalf(canvas, Offset(x, halfH), currentIndex, false, val > 0.5 ? (1.0 - val) * 0.35 : 0.0);
-
-      final double angle = val * math.pi;
-      canvas.save();
-      canvas.translate(x + unitWidth / 2, halfH);
-      
-      final Matrix4 matrix = Matrix4.identity()
-        ..setEntry(3, 2, 0.002)
-        ..rotateX(-angle);
-      canvas.transform(matrix.storage);
-      
-      final double flapShading = (0.5 - (val - 0.5).abs()) * 0.4;
-      
-      if (val > 0.5) {
-        canvas.save();
-        canvas.rotate(math.pi);
-        _drawHalf(canvas, Offset(-unitWidth / 2, -halfH), nextIndex, false, flapShading);
-        canvas.restore();
+      if (progress < 0.001) {
+        // Static State
+        _drawHalf(canvas, x, 0, currIdx, true, rects, 0);
+        _drawHalf(canvas, x, halfH, currIdx, false, rects, 0);
       } else {
-        _drawHalf(canvas, Offset(-unitWidth / 2, -halfH), currentIndex, true, flapShading);
-      }
-      canvas.restore();
+        // Animation Logic
+        final double shading = (0.5 - (progress - 0.5).abs()) * 0.4;
+        
+        // Base revealed background
+        if (progress < 0.5) {
+          _drawHalf(canvas, x, 0, nextIdx, true, rects, 0);       // revealed top
+          _drawHalf(canvas, x, halfH, currIdx, false, rects, 0);  // static bottom
+        } else {
+          _drawHalf(canvas, x, 0, nextIdx, true, rects, 0);       // static top
+          _drawHalf(canvas, x, halfH, nextIdx, false, rects, 0);  // revealed bottom
+        }
 
+        // Animated swinging flap
+        canvas.save();
+        canvas.translate(x + unitWidth / 2, halfH);
+        
+        final matrix = Matrix4.identity()
+          ..setEntry(3, 2, 0.0012)
+          ..rotateX(-progress * math.pi);
+        canvas.transform(matrix.storage);
+
+        if (progress < 0.5) {
+          _drawHalf(canvas, -unitWidth / 2, -halfH, currIdx, true, rects, shading);
+        } else {
+          canvas.rotate(math.pi);
+          _drawHalf(canvas, -unitWidth / 2, -halfH, nextIdx, false, rects, shading);
+        }
+        canvas.restore();
+      }
+
+      // Hardware detail lines
       canvas.drawLine(Offset(x, halfH), Offset(x + unitWidth, halfH), _hingePaint);
-      canvas.drawCircle(Offset(x + 1.5, halfH), 0.8, _pinPaint);
-      canvas.drawCircle(Offset(x + unitWidth - 1.5, halfH), 0.8, _pinPaint);
+      canvas.drawCircle(Offset(x + 1.2, halfH), 0.7, _pinPaint);
+      canvas.drawCircle(Offset(x + unitWidth - 1.2, halfH), 0.7, _pinPaint);
+
+      x += (unitWidth + spacing);
+    }
   }
 
-  void _drawHalf(Canvas canvas, Offset offset, int charIndex, bool isTop, double shading) {
-    final src = _getCharRect(charIndex, isTop);
-    
-    if (shading > 0.01) {
-        _mainPaint.colorFilter = ColorFilter.mode(Colors.black.withOpacity(shading), BlendMode.multiply);
-    } else {
-        _mainPaint.colorFilter = null;
+  void _drawHalf(Canvas canvas, double dx, double dy, int idx, bool isTop, List<Rect> rects, double shade) {
+    if (idx < 0 || idx >= alphabet.length) return;
+    final src = rects[idx * 2 + (isTop ? 0 : 1)];
+    final dst = Rect.fromLTWH(dx, dy, unitWidth, unitHeight / 2);
+    canvas.drawImageRect(spriteSheet, src, dst, _mainPaint);
+    if (shade > 0.01) {
+      _shadingPaint.color = Colors.black.withOpacity(shade);
+      canvas.drawRect(dst, _shadingPaint);
     }
-
-    canvas.drawImageRect(
-        spriteSheet,
-        src,
-        Rect.fromLTWH(offset.dx, offset.dy, unitWidth, unitHeight / 2),
-        _mainPaint
-    );
   }
 
   @override
   bool shouldRepaint(covariant SplitFlapRowPainter oldDelegate) {
-    // Repaint if the animation is moving OR if the underlying data has changed
-    if (oldDelegate.animationValue != animationValue) return true;
-    
-    for (int i = 0; i < currentIndices.length; i++) {
-        if (oldDelegate.currentIndices[i] != currentIndices[i]) return true;
-        if (oldDelegate.remainingSteps[i] != remainingSteps[i]) return true;
-    }
-    
-    return false;
+    return val != oldDelegate.val || 
+           currentIndices != oldDelegate.currentIndices || 
+           remainingSteps != oldDelegate.remainingSteps;
   }
 }
