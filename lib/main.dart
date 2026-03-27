@@ -96,6 +96,12 @@ class _DepartureBoardScreenState extends State<DepartureBoardScreen> {
     setState(() => _shuffling = false);
   }
 
+  void _onShufflePressed() {
+     // Force audio context unlock on first button press
+     FlapSoundManager.instance.playClick();
+     _shuffle();
+  }
+
   @override
   Widget build(BuildContext context) {
     final double scW = MediaQuery.of(context).size.width;
@@ -327,7 +333,7 @@ class _DepartureBoardScreenState extends State<DepartureBoardScreen> {
         boxShadow: [BoxShadow(color: _yellow.withOpacity(0.15), blurRadius: 40, spreadRadius: -10)]
       ),
       child: ElevatedButton.icon(
-        onPressed: _shuffling ? null : _shuffle,
+        onPressed: _shuffling ? null : _onShufflePressed,
         icon: Icon(_shuffling ? Icons.more_horiz : Icons.sync, color: Colors.black, size: 22),
         label: Text(_shuffling ? "UPDATING BOARD..." : "RELOAD FLIGHTS", 
           style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.8)),

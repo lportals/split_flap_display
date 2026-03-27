@@ -144,10 +144,9 @@ class FlapSoundManager {
     _nextClickIndex = (_nextClickIndex + 1) % _poolSize;
 
     try {
-      player.seek(Duration.zero).then((_) {
-        player.setVolume(vol.clamp(0.05, 1.0));
-        player.play().catchError((_) => null);
-      });
+      player.seek(Duration.zero).catchError((_) => null);
+      player.setVolume(vol.clamp(0.05, 1.0)).catchError((_) => null);
+      player.play().catchError((_) => null);
     } catch (_) {}
   }
 
@@ -210,9 +209,8 @@ class FlapSoundManager {
 
     try {
       if (!_rainPlayer.playing) {
-        _rainPlayer.seek(Duration.zero).then((_) {
-            _rainPlayer.play().catchError((_) => null);
-        });
+          _rainPlayer.seek(Duration.zero).catchError((_) => null);
+          _rainPlayer.play().catchError((_) => null);
       }
       _rainPlayer.setVolume(loopVol).catchError((_) => null);
       _rainPlayer.setSpeed(speed).catchError((_) => null);
