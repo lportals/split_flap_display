@@ -232,9 +232,12 @@ class _SplitFlapRowState extends State<SplitFlapRow> with SingleTickerProviderSt
     if (anyRemaining) {
       _controller.reset();
       _controller.forward();
-      if (math.Random().nextDouble() > 0.6) HapticFeedback.lightImpact();
+      if (math.Random().nextDouble() > 0.6) {
+        FlapSoundManager.instance.playHaptic();
+      }
     } else {
       _controller.reset();
+      if (mounted) setState(() {});
     }
     
     // Update local activity to the sound manager
@@ -242,8 +245,8 @@ class _SplitFlapRowState extends State<SplitFlapRow> with SingleTickerProviderSt
       int active = _remainingSteps.where((s) => s > 0).length;
       FlapSoundManager.instance.updateRowActivity(hashCode, active);
     }
-
-    if (mounted) setState(() {});
+    // We only need to call setState if the animation stops.
+    // Otherwise, the AnimatedBuilder will keep triggering repaints for the new cycle.
   }
 
   @override

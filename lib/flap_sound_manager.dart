@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 
 /// Procedural, density-aware sound engine for the Split-Flap display.
@@ -58,6 +59,8 @@ class FlapSoundManager {
   int _activeUnits = 0;
 
   DateTime _lastClickTime = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _lastAmbientUpdateTime = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _lastHapticTime = DateTime.fromMillisecondsSinceEpoch(0);
 
   // ---------------------------------------------------------------------------
   // Players
@@ -130,7 +133,7 @@ class FlapSoundManager {
     final double density = (_activeUnits / maxBoardCapacity).clamp(0.0, 1.0);
 
     // Throttle: 55 ms at idle → 18 ms at full density
-    final int throttleMs = (55 - (density * 37)).toInt();
+    final int throttleMs = (50 - (density * 32)).toInt();
     if (now.difference(_lastClickTime).inMilliseconds < throttleMs) return;
     _lastClickTime = now;
 
@@ -146,6 +149,15 @@ class FlapSoundManager {
         player.play().catchError((_) => null);
       });
     } catch (_) {}
+  }
+
+  /// Triggers haptic feedback with a global throttle to preserve UI thread budget.
+  void playHaptic() {
+    final now = DateTime.now();
+    // No more than 1 haptic burst every 40 ms globally
+    if (now.difference(_lastHapticTime).inMilliseconds < 40) return;
+    _lastHapticTime = now;
+    HapticFeedback.lightImpact().catchError((_) => null);
   }
 
   /// Releases all player resources.
@@ -171,6 +183,12 @@ class FlapSoundManager {
   void _updateAmbientMix() {
     if (!_isInitialized) return;
 
+    final now = DateTime.now();
+    // Maximum 10 ambient updates per second (100ms throttle).
+    // The rain loop is a texture; it doesn't need high-frequency updates.
+    if (now.difference(_lastAmbientUpdateTime).inMilliseconds < 100 && _activeUnits > 0) return;
+    _lastAmbientUpdateTime = now;
+
     final double density = (_activeUnits / maxBoardCapacity).clamp(0.0, 1.0);
 
     // ==== ALL UNITS STOPPED → STOP RAIN LOOP ====
@@ -178,11 +196,8 @@ class FlapSoundManager {
       _stopTimer?.cancel();
       _stopTimer = null;
 
-      // Kill the rain loop — clicks will decay naturally on their own.
-      try {
-        _rainPlayer.setVolume(0);
-        _rainPlayer.stop().catchError((_) => null);
-      } catch (_) {}
+      _rainPlayer.setVolume(0).catchError((_) => null);
+      _rainPlayer.stop().catchError((_) => null);
       return;
     }
 
@@ -190,19 +205,17 @@ class FlapSoundManager {
     _stopTimer?.cancel();
     _stopTimer = null;
 
-    // Volume: Weber–Fechner perceptual curve
-    final double loopVol = math.pow(density, 0.4) * 0.75 + 0.08;
-
-    // Speed: simulates higher motor torque under load
-    final double speed = 0.96 + (density * 0.28);
+    final double loopVol = (math.pow(density, 0.4) * 0.75 + 0.08).clamp(0.0, 1.0);
+    final double speed = (0.96 + (density * 0.28)).clamp(0.5, 2.0);
 
     try {
       if (!_rainPlayer.playing) {
-        _rainPlayer.seek(Duration.zero);
-        _rainPlayer.play().catchError((_) => null);
+        _rainPlayer.seek(Duration.zero).then((_) {
+            _rainPlayer.play().catchError((_) => null);
+        });
       }
-      _rainPlayer.setVolume(loopVol.clamp(0.0, 1.0));
-      _rainPlayer.setSpeed(speed.clamp(0.5, 2.0));
+      _rainPlayer.setVolume(loopVol).catchError((_) => null);
+      _rainPlayer.setSpeed(speed).catchError((_) => null);
     } catch (_) {}
   }
 }

@@ -195,7 +195,7 @@ class _DepartureBoardScreenState extends State<DepartureBoardScreen> {
             final int index = entry.key;
             final DepartureData rowData = entry.value;
             return Padding(
-              key: ValueKey('board_row_${rowData.flight}_$index'),
+              key: ValueKey('board_row_$index'),
               padding: const EdgeInsets.symmetric(vertical: 5.5),
               child: _buildRow(rowData, isDesktop, isTablet, isMobile, wF, wT, wD, wG, wS, gap, h, w, sp, lenF, lenT, lenD, lenG, lenS),
             );
