@@ -11,5 +11,5 @@ export PATH="$PATH:`pwd`/flutter/bin"
 # 3. Enable Web
 flutter config --enable-web
 
-# 4. Run Build with CanvasKit for best mechanical performance
-flutter build web --release --base-href / --web-renderer canvaskit
+# 4. Run Build with WASM support (Skia/Skwasm) for performance
+flutter build web --release --base-href / --wasm
