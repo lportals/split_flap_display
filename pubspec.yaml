@@ -1,7 +1,8 @@
-name: flip_flap_display
-description: "A new Flutter project."
-publish_to: 'none'
-version: 0.1.0+1
+name: split_flap_display
+description: "A high-performance, cinematic split-flap display component for Flutter with realistic procedural sound and responsive layouts."
+repository: "https://github.com/luisportal/split_flap_display"
+homepage: "https://github.com/luisportal/split_flap_display"
+version: 0.1.0
 
 environment:
   sdk: ^3.11.1

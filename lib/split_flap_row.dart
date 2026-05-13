@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'flap_sound_manager.dart';
 
 /// A high-performance row of split-flap units that uses Shared Sprite Sheets (textures).
@@ -48,7 +47,6 @@ class _SplitFlapRowState extends State<SplitFlapRow> with SingleTickerProviderSt
   static final Map<String, Future<ui.Image>> _pendingSpriteSheets = {};
 
   bool _isReady = false;
-  SplitFlapRowPainter? _cachedPainter;
 
   @override
   void initState() {
@@ -73,7 +71,7 @@ class _SplitFlapRowState extends State<SplitFlapRow> with SingleTickerProviderSt
   }
 
   Future<void> _startWarmup() async {
-    final int colorVal = widget.textColor.value;
+    final int colorVal = widget.textColor.toARGB32();
     final String key = "${widget.unitWidth.toInt()}-${widget.unitHeight.toInt()}-$colorVal";
     
     if (_spriteSheets.containsKey(key)) {
@@ -151,12 +149,12 @@ class _SplitFlapRowState extends State<SplitFlapRow> with SingleTickerProviderSt
           canvas.drawLine(
               const Offset(2, 0.5),
               Offset(widget.unitWidth - 2, 0.5),
-              Paint()..color = Colors.white.withOpacity(0.12)..strokeWidth = 0.5,
+              Paint()..color = Colors.white.withValues(alpha: 0.12)..strokeWidth = 0.5,
           );
       }
       
       canvas.drawRRect(rRect, Paint()
-          ..color = Colors.black.withOpacity(0.4)
+          ..color = Colors.black.withValues(alpha: 0.4)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.0);
 
@@ -199,7 +197,7 @@ class _SplitFlapRowState extends State<SplitFlapRow> with SingleTickerProviderSt
     
     if (!widget.silent) {
       int active = 0;
-      for (var s in _remainingSteps) if (s > 0) active++;
+      for (var s in _remainingSteps) { if (s > 0) active++; }
       FlapSoundManager.instance.updateRowActivity(hashCode, active);
     }
   }
@@ -230,7 +228,7 @@ class _SplitFlapRowState extends State<SplitFlapRow> with SingleTickerProviderSt
     
     if (!widget.silent) {
       int active = 0;
-      for (var s in _remainingSteps) if (s > 0) active++;
+      for (var s in _remainingSteps) { if (s > 0) active++; }
       FlapSoundManager.instance.updateRowActivity(hashCode, active);
     }
   }
@@ -269,7 +267,7 @@ class _SplitFlapRowState extends State<SplitFlapRow> with SingleTickerProviderSt
     }
 
     // Use a simple string key for the specific color + size combination
-    final int colorVal = widget.textColor.value;
+    final int colorVal = widget.textColor.toARGB32();
     final String key = "${widget.unitWidth.toInt()}-${widget.unitHeight.toInt()}-$colorVal";
     
     final sheet = _spriteSheets[key];
@@ -409,7 +407,7 @@ class SplitFlapRowPainter extends CustomPainter {
     final dst = Rect.fromLTWH(dx, dy, unitWidth, unitHeight / 2);
     canvas.drawImageRect(spriteSheet, src, dst, _mainPaint);
     if (shade > 0.01) {
-      _shadingPaint.color = Colors.black.withOpacity(shade);
+      _shadingPaint.color = Colors.black.withValues(alpha: shade);
       canvas.drawRect(dst, _shadingPaint);
     }
   }

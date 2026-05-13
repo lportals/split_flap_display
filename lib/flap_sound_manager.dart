@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:just_audio/just_audio.dart';
-import 'package:flutter/foundation.dart';
+
 
 /// Procedural, density-aware sound engine for the Split-Flap display.
 ///
@@ -87,10 +87,10 @@ class FlapSoundManager {
     try {
       for (int i = 0; i < _poolSize; i++) {
         final player = AudioPlayer();
-        await player.setAsset('assets/audio/flap_single.mp3', preload: true);
+        await player.setAsset('packages/split_flap_display/assets/audio/flap_single.mp3', preload: true);
         _clickPool.add(player);
       }
-      await _rainPlayer.setAsset('assets/audio/flap_rain_loop.mp3', preload: true);
+      await _rainPlayer.setAsset('packages/split_flap_display/assets/audio/flap_rain_loop.mp3', preload: true);
       await _rainPlayer.setLoopMode(LoopMode.one);
       await _rainPlayer.setVolume(0);
       
@@ -171,7 +171,7 @@ class FlapSoundManager {
   void dispose() {
     _clickPulseTimer?.cancel();
     _stopTimer?.cancel();
-    for (final p in _clickPool) p.dispose();
+    for (final p in _clickPool) { p.dispose(); }
     _rainPlayer.dispose();
   }
 
