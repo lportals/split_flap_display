@@ -2,7 +2,7 @@
 
 A high-performance, cinematic split-flap display component for Flutter.
 
-![Split Flap Demo](https://raw.githubusercontent.com/luisportal/split_flap_display/main/assets/demo.gif)
+![Split Flap Demo](https://raw.githubusercontent.com/lportals/split_flap_display/main/assets/demo.gif)
 
 🚀 **[Live Demo](https://flip-flap-display.vercel.app/)**
 
