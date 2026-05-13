@@ -2,7 +2,7 @@ name: split_flap_display
 description: "A high-performance, cinematic split-flap display component for Flutter with realistic procedural sound and responsive layouts."
 repository: "https://github.com/luisportal/split_flap_display"
 homepage: "https://github.com/luisportal/split_flap_display"
-version: 0.1.0
+version: 0.1.1
 
 environment:
   sdk: ^3.11.1
@@ -11,6 +11,8 @@ dependencies:
   flutter:
     sdk: flutter
   just_audio: ^0.10.5
+  just_audio_media_kit: ^2.1.0
+  just_audio_windows: ^0.2.3
 
 dev_dependencies:
   flutter_test:
