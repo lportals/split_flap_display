@@ -1,6 +1,6 @@
 {
   "buildCommand": "bash build.sh",
-  "outputDirectory": "build/web",
+  "outputDirectory": "example/build/web",
   "framework": null,
   "cleanUrls": true
 }

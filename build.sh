@@ -11,5 +11,7 @@ export PATH="$PATH:`pwd`/flutter/bin"
 # 3. Enable Web
 flutter config --enable-web
 
-# 4. Run Build with WASM support (Skia/Skwasm) for performance
+# 4. Navigate to example project and build
+cd example
+flutter pub get
 flutter build web --release --base-href / --wasm
